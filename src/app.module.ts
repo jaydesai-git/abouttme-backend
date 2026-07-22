@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
+import { MailModule } from './modules/mail/mail.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -16,6 +17,7 @@ import { UsersModule } from './modules/users/users.module';
     DatabaseModule,
     UsersModule,
     StorageModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
