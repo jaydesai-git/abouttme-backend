@@ -24,7 +24,6 @@ src/
 ├── users/
 ├── oauth/
 ├── sessions/
-├── workspaces/
 ├── profiles/
 ├── onboarding/
 ├── common/
@@ -70,7 +69,8 @@ model User {
 
   oauthAccounts  OauthAccount[]
   sessions       Session[]
-  workspaces     Workspace[]
+  profile        Profile?
+  onboarding     Onboarding?
 }
 
 enum UserStatus {
@@ -79,6 +79,8 @@ enum UserStatus {
   DELETED
 }
 ```
+
+> **Future (pricing / limits):** Plan and usage limits (e.g. how many bio links, business cards, QR codes) will live on the user — not a separate workspace. Defer until billing is introduced.
 
 ---
 
@@ -163,56 +165,14 @@ model Session {
 
 ---
 
-## Workspaces
-
-Root business entity.
-
-| Field     | Type     | Notes             |
-| --------- | -------- | ----------------- |
-| id        | UUID     | PK                |
-| ownerId   | UUID     | FK users          |
-| name      | String   |                   |
-| slug      | String   | Unique            |
-| plan      | Enum     | FREE / PRO / TEAM |
-| createdAt | DateTime |                   |
-| updatedAt | DateTime |                   |
-
-### Prisma
-
-```prisma
-model Workspace {
-  id        String   @id @default(uuid())
-  ownerId   String
-  name      String
-  slug      String   @unique
-  plan      WorkspacePlan @default(FREE)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  owner      User @relation(fields: [ownerId], references: [id])
-  profile    Profile?
-  onboarding Onboarding?
-
-  @@index([ownerId])
-}
-
-enum WorkspacePlan {
-  FREE
-  PRO
-  TEAM
-}
-```
-
----
-
 ## Profiles
 
-Public profile.
+Public profile. Owned by the user.
 
 | Field       | Type     | Notes                 |
 | ----------- | -------- | --------------------- |
 | id          | UUID     | PK                    |
-| workspaceId | UUID     | Unique FK             |
+| userId      | UUID     | Unique FK             |
 | username    | String   | Global unique         |
 | displayName | String   |                       |
 | bio         | String   | Optional              |
@@ -228,7 +188,7 @@ Public profile.
 ```prisma
 model Profile {
   id          String   @id @default(uuid())
-  workspaceId String   @unique
+  userId      String   @unique
   username    String   @unique
   displayName String
   bio         String?
@@ -239,7 +199,7 @@ model Profile {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum Theme {
@@ -253,12 +213,12 @@ enum Theme {
 
 ## Onboarding
 
-Resumable onboarding flow.
+Resumable onboarding flow. Owned by the user.
 
 | Field       | Type     | Notes         |
 | ----------- | -------- | ------------- |
 | id          | UUID     | PK            |
-| workspaceId | UUID     | Unique FK     |
+| userId      | UUID     | Unique FK     |
 | currentStep | Int      | Default 1     |
 | completed   | Boolean  | Default false |
 | completedAt | DateTime | Nullable      |
@@ -270,14 +230,14 @@ Resumable onboarding flow.
 ```prisma
 model Onboarding {
   id          String   @id @default(uuid())
-  workspaceId String   @unique
+  userId      String   @unique
   currentStep Int      @default(1)
   completed   Boolean  @default(false)
   completedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 ```
 
@@ -293,8 +253,6 @@ POST /auth/signup
 Validate email/password
     ↓
 Create User
-    ↓
-Create Workspace
     ↓
 Create Profile
     ↓
@@ -325,7 +283,7 @@ Find user by email
     ↓
 Link account OR create new user
     ↓
-Create workspace/profile/onboarding
+Create profile/onboarding
     ↓
 Create session
     ↓
@@ -339,7 +297,7 @@ Return tokens
 ## Access Token
 
 - Expiry: 15 minutes
-- Contains: userId, workspaceId
+- Contains: userId
 
 ## Refresh Token
 
@@ -463,37 +421,12 @@ PATCH /onboarding/step-1
 
 ---
 
-## Step 2 - Workspace Name
+## Step 2 - Display Name
 
 ### Endpoint
 
 ```http
 PATCH /onboarding/step-2
-```
-
-### Body
-
-```json
-{
-  "workspaceName": "Jay Studio"
-}
-```
-
-### Validation
-
-- 2-50 chars
-- Trim spaces
-- Generate slug automatically
-- Reserved words blocked
-
----
-
-## Step 3 - Display Name
-
-### Endpoint
-
-```http
-PATCH /onboarding/step-3
 ```
 
 ### Body
@@ -511,12 +444,12 @@ PATCH /onboarding/step-3
 
 ---
 
-## Step 4 - Username
+## Step 3 - Username
 
 ### Endpoint
 
 ```http
-PATCH /onboarding/step-4
+PATCH /onboarding/step-3
 ```
 
 ### Body
@@ -549,12 +482,12 @@ PATCH /onboarding/step-4
 
 ---
 
-## Step 5 - Social Links (Optional)
+## Step 4 - Social Links (Optional)
 
 ### Endpoint
 
 ```http
-PATCH /onboarding/step-6
+PATCH /onboarding/step-4
 ```
 
 ### Body
@@ -572,12 +505,12 @@ PATCH /onboarding/step-6
 
 ---
 
-## Step 6 - AI Preferences
+## Step 5 - AI Preferences
 
 ### Endpoint
 
 ```http
-PATCH /onboarding/step-7
+PATCH /onboarding/step-5
 ```
 
 ### Body
@@ -591,7 +524,7 @@ PATCH /onboarding/step-7
 
 ---
 
-## Step 7 - Finish
+## Step 6 - Finish
 
 ### Endpoint
 
@@ -736,7 +669,6 @@ prisma db push
 npx prisma migrate dev --name init_users
 npx prisma migrate dev --name add_oauth_accounts
 npx prisma migrate dev --name add_sessions
-npx prisma migrate dev --name add_workspaces
 npx prisma migrate dev --name add_profiles
 npx prisma migrate dev --name add_onboarding
 ```
@@ -776,8 +708,6 @@ username
     ↓
 profiles
     ↓
-workspace
-    ↓
 links
     ↓
 render page
@@ -807,22 +737,21 @@ User (Identity)
 │
 ├── OAuth Accounts
 ├── Sessions
+├── Profile / Bio Pages (many — limited by plan later)
+│      ├── username (global unique)
+│      └── links
 │
-└── Workspace (Container)
-      │
-      ├── Bio Pages (many)
-      │      ├── username (global unique)
-      │      └── links
-      │
-      ├── Business Cards (many)
-      │      └── slug/publicId
-      │
-      ├── QR Codes (many)
-      │      └── publicId
-      │
-      ├── Email Signatures (many)
-      │
-      ├── Meeting Backgrounds (many)
-      │
-      └── AI Assets / Templates
+├── Business Cards (many — limited by plan later)
+│      └── slug/publicId
+│
+├── QR Codes (many — limited by plan later)
+│      └── publicId
+│
+├── Email Signatures (many)
+│
+├── Meeting Backgrounds (many)
+│
+└── AI Assets / Templates
 ```
+
+Plan / pricing decides create limits (bio pages, cards, QR, etc.) on the user — no workspace container.
